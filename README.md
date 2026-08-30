@@ -10,3 +10,4 @@ Wear OS Galaxy Watch complication and companion watch app that displays real-tim
   - **Monday–Thursday:** Regular 55-minute period schedule with 25-minute Advisory, Nutrition, and Lunch.
   - **Friday:** Collaboration schedule with 48-minute periods 1–6, Nutrition, and Lunch, dismissing at 2:53 PM.
 - **Interactive Wear OS App:** Full-day schedule viewer with live countdown and period highlighting built with Wear OS Compose Material3.
+
