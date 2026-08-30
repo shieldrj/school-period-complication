@@ -1,7 +1,0 @@
-R_DEF: Internal format may change without notice
-local
-drawable ic_school
-drawable ic_school_background
-mipmap ic_launcher
-string app_name
-string complication_label
