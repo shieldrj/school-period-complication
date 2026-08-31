@@ -3,6 +3,9 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
 
+    <!-- Alarms are cleared by a reboot; re-arm the complication refresh chain on boot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -34,10 +37,29 @@
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
                 android:value="SHORT_TEXT,RANGED_VALUE,LONG_TEXT,GOAL_PROGRESS" />
+            <!--
+                Only a safety net. The platform treats this as a throttled hint, so the
+                countdown does not rely on it: the text is a time reference the watch face
+                renders itself, and period changes are refreshed on the bell by
+                ComplicationRefreshReceiver.
+            -->
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="60" />
+                android:value="300" />
         </service>
+
+        <receiver
+            android:name=".complication.ComplicationRefreshReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.shieldrj.schoolperiod.action.REFRESH_COMPLICATION" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

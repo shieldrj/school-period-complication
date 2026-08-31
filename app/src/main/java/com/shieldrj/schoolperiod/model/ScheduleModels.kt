@@ -1,6 +1,5 @@
 package com.shieldrj.schoolperiod.model
 
-import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 
@@ -32,6 +31,15 @@ enum class ScheduleType(val displayName: String) {
 }
 
 /**
+ * Rounds a remaining-seconds value up to whole minutes, so a countdown reads
+ * "1m" for the whole final minute and only reaches "0m" when the bell rings.
+ * This matches how the watch face renders [java.util.concurrent.TimeUnit.MINUTES]
+ * time-difference text, keeping the app and the complication in agreement.
+ */
+internal fun ceilMinutes(seconds: Long): Long =
+    if (seconds <= 0L) 0L else (seconds + 59L) / 60L
+
+/**
  * Represents the current status at any given time of day.
  */
 sealed class PeriodStatus {
@@ -41,12 +49,33 @@ sealed class PeriodStatus {
     abstract val fullDescription: String
     abstract val progressFraction: Float
 
+    /**
+     * Start of the window this status is counting through, or null when nothing is
+     * counting down. Together with [windowEnd] this lets the complication hand the
+     * watch face a live countdown instead of a text snapshot.
+     */
+    abstract val windowStart: LocalTime?
+
+    /**
+     * The exact time this status stops being true — the moment the complication
+     * needs to be rebuilt. Null when no change is pending today.
+     */
+    abstract val windowEnd: LocalTime?
+
     data class Active(
         val period: BellPeriod,
-        val minutesRemaining: Long,
-        val totalMinutes: Long,
+        val secondsRemaining: Long,
         val nextPeriod: BellPeriod?
     ) : PeriodStatus() {
+        val minutesRemaining: Long
+            get() = ceilMinutes(secondsRemaining)
+
+        val totalSeconds: Long
+            get() = ChronoUnit.SECONDS.between(period.startTime, period.endTime)
+
+        val totalMinutes: Long
+            get() = period.durationMinutes
+
         override val complicationPrimaryText: String
             get() = period.shortName
 
@@ -60,16 +89,28 @@ sealed class PeriodStatus {
             get() = "${period.name} · ${minutesRemaining}m left"
 
         override val progressFraction: Float
-            get() = if (totalMinutes > 0) {
-                ((totalMinutes - minutesRemaining).toFloat() / totalMinutes.toFloat()).coerceIn(0f, 1f)
+            get() = if (totalSeconds > 0) {
+                ((totalSeconds - secondsRemaining).toFloat() / totalSeconds.toFloat()).coerceIn(0f, 1f)
             } else 0f
+
+        override val windowStart: LocalTime?
+            get() = period.startTime
+
+        override val windowEnd: LocalTime?
+            get() = period.endTime
     }
 
     data class Passing(
         val nextPeriod: BellPeriod,
-        val minutesRemaining: Long,
-        val totalPassingMinutes: Long
+        val secondsRemaining: Long,
+        val totalPassingSeconds: Long
     ) : PeriodStatus() {
+        val minutesRemaining: Long
+            get() = ceilMinutes(secondsRemaining)
+
+        val totalPassingMinutes: Long
+            get() = ceilMinutes(totalPassingSeconds)
+
         override val complicationPrimaryText: String
             get() = "Pass"
 
@@ -83,15 +124,25 @@ sealed class PeriodStatus {
             get() = "Passing to ${nextPeriod.shortName} (${minutesRemaining}m left)"
 
         override val progressFraction: Float
-            get() = if (totalPassingMinutes > 0) {
-                ((totalPassingMinutes - minutesRemaining).toFloat() / totalPassingMinutes.toFloat()).coerceIn(0f, 1f)
+            get() = if (totalPassingSeconds > 0) {
+                ((totalPassingSeconds - secondsRemaining).toFloat() / totalPassingSeconds.toFloat())
+                    .coerceIn(0f, 1f)
             } else 0f
+
+        override val windowStart: LocalTime?
+            get() = nextPeriod.startTime.minusSeconds(totalPassingSeconds)
+
+        override val windowEnd: LocalTime?
+            get() = nextPeriod.startTime
     }
 
     data class BeforeSchool(
         val firstPeriod: BellPeriod,
-        val minutesUntilStart: Long
+        val secondsUntilStart: Long
     ) : PeriodStatus() {
+        val minutesUntilStart: Long
+            get() = ceilMinutes(secondsUntilStart)
+
         override val complicationPrimaryText: String
             get() = "Off"
 
@@ -106,6 +157,13 @@ sealed class PeriodStatus {
 
         override val progressFraction: Float
             get() = 0f
+
+        // No progress window: the wait since midnight is not meaningful to draw.
+        override val windowStart: LocalTime?
+            get() = null
+
+        override val windowEnd: LocalTime?
+            get() = firstPeriod.startTime
     }
 
     data class AfterSchool(
@@ -125,6 +183,12 @@ sealed class PeriodStatus {
 
         override val progressFraction: Float
             get() = 1f
+
+        override val windowStart: LocalTime?
+            get() = null
+
+        override val windowEnd: LocalTime?
+            get() = null
     }
 
     data object Weekend : PeriodStatus() {
@@ -142,6 +206,11 @@ sealed class PeriodStatus {
 
         override val progressFraction: Float
             get() = 0f
+
+        override val windowStart: LocalTime?
+            get() = null
+
+        override val windowEnd: LocalTime?
+            get() = null
     }
 }
-

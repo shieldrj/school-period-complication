@@ -5,6 +5,7 @@ import com.shieldrj.schoolperiod.model.PeriodStatus
 import com.shieldrj.schoolperiod.model.ScheduleType
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 
@@ -70,6 +71,9 @@ object ScheduleEngine {
 
     /**
      * Determines current period status for a given day and time.
+     *
+     * Countdowns are carried in seconds so that callers can render a countdown that
+     * is accurate to the second rather than to whatever minute the last refresh landed in.
      */
     fun getStatus(dayOfWeek: DayOfWeek, time: LocalTime): PeriodStatus {
         val scheduleType = getScheduleType(dayOfWeek)
@@ -86,8 +90,8 @@ object ScheduleEngine {
         val lastPeriod = periods.last()
 
         if (time.isBefore(firstPeriod.startTime)) {
-            val minutesUntilStart = ChronoUnit.MINUTES.between(time, firstPeriod.startTime)
-            return PeriodStatus.BeforeSchool(firstPeriod, minutesUntilStart)
+            val secondsUntilStart = ChronoUnit.SECONDS.between(time, firstPeriod.startTime)
+            return PeriodStatus.BeforeSchool(firstPeriod, secondsUntilStart)
         }
 
         if (time == lastPeriod.endTime || time.isAfter(lastPeriod.endTime)) {
@@ -98,13 +102,11 @@ object ScheduleEngine {
         for (i in periods.indices) {
             val period = periods[i]
             if (period.contains(time)) {
-                val minutesRemaining = ChronoUnit.MINUTES.between(time, period.endTime)
-                val totalMinutes = period.durationMinutes
+                val secondsRemaining = ChronoUnit.SECONDS.between(time, period.endTime)
                 val nextPeriod = if (i + 1 < periods.size) periods[i + 1] else null
                 return PeriodStatus.Active(
                     period = period,
-                    minutesRemaining = minutesRemaining,
-                    totalMinutes = totalMinutes,
+                    secondsRemaining = secondsRemaining,
                     nextPeriod = nextPeriod
                 )
             }
@@ -118,17 +120,41 @@ object ScheduleEngine {
             if ((time == currentPeriod.endTime || time.isAfter(currentPeriod.endTime)) &&
                 time.isBefore(nextPeriod.startTime)
             ) {
-                val minutesRemaining = ChronoUnit.MINUTES.between(time, nextPeriod.startTime)
-                val totalPassingMinutes = ChronoUnit.MINUTES.between(currentPeriod.endTime, nextPeriod.startTime)
+                val secondsRemaining = ChronoUnit.SECONDS.between(time, nextPeriod.startTime)
+                val totalPassingSeconds =
+                    ChronoUnit.SECONDS.between(currentPeriod.endTime, nextPeriod.startTime)
                 return PeriodStatus.Passing(
                     nextPeriod = nextPeriod,
-                    minutesRemaining = minutesRemaining,
-                    totalPassingMinutes = totalPassingMinutes
+                    secondsRemaining = secondsRemaining,
+                    totalPassingSeconds = totalPassingSeconds
                 )
             }
         }
 
         return PeriodStatus.AfterSchool(lastPeriod.endTime)
+    }
+
+    /**
+     * The next instant at which [getStatus] would return something different: the end of the
+     * current period, the start of the next one, or — once the school day is over — the first
+     * bell of the next school day.
+     *
+     * The complication uses this to refresh itself exactly on the bell instead of waiting for
+     * the platform's throttled update period to come around.
+     */
+    fun nextStatusChange(date: LocalDate, time: LocalTime): LocalDateTime {
+        getStatus(date.dayOfWeek, time).windowEnd?.let { return LocalDateTime.of(date, it) }
+
+        // After dismissal or on a weekend: wake up for the first bell of the next school day.
+        var day = date.plusDays(1)
+        repeat(DAYS_IN_WEEK) {
+            val periods = getSchedule(getScheduleType(day.dayOfWeek))
+            if (periods.isNotEmpty()) {
+                return LocalDateTime.of(day, periods.first().startTime)
+            }
+            day = day.plusDays(1)
+        }
+        return LocalDateTime.of(date.plusDays(1), LocalTime.MIDNIGHT)
     }
 
     /**
@@ -140,5 +166,6 @@ object ScheduleEngine {
     ): PeriodStatus {
         return getStatus(date.dayOfWeek, time)
     }
-}
 
+    private const val DAYS_IN_WEEK = 7
+}
