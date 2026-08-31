@@ -50,6 +50,10 @@ dependencies {
     implementation("androidx.wear:wear:1.3.0")
     implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1")
 
+    // Dynamic (clock-driven) complication values, used for the live progress ring.
+    // Version matches what the complications library above resolves to.
+    implementation("androidx.wear.protolayout:protolayout-expression:1.0.0-beta01")
+
     // Wear OS Compose (Material3 & Foundation)
     implementation("androidx.wear.compose:compose-material3:1.0.0-alpha26")
     implementation("androidx.wear.compose:compose-foundation:1.4.0")

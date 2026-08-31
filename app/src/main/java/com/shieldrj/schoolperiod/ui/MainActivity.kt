@@ -69,12 +69,14 @@ fun SchoolPeriodApp() {
     var currentDate by remember { mutableStateOf(LocalDate.now()) }
     var selectedScheduleType by remember { mutableStateOf<ScheduleType?>(null) }
 
-    // Live clock ticker every second
+    // Live clock ticker, re-aligned to the top of each second so it cannot drift behind
+    // the countdown the watch face is drawing.
     LaunchedEffect(Unit) {
         while (true) {
-            currentTime = LocalTime.now()
+            val now = LocalTime.now()
+            currentTime = now
             currentDate = LocalDate.now()
-            delay(1000)
+            delay(1000L - (now.nano / 1_000_000L))
         }
     }
 

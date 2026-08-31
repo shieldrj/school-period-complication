@@ -7,6 +7,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 class ScheduleEngineTest {
@@ -192,6 +194,84 @@ class ScheduleEngineTest {
         val after = ScheduleEngine.getStatus(friday, LocalTime.of(14, 53))
         assertTrue(after is PeriodStatus.AfterSchool)
         assertEquals(LocalTime.of(14, 53), (after as PeriodStatus.AfterSchool).dismissalTime)
+    }
+
+    @Test
+    fun testCountdownRoundsUpWithinTheFinalMinute() {
+        // 9:24:30 AM, thirty seconds before Period 1 ends: a countdown reads "1m", not "0m".
+        val nearBell = ScheduleEngine.getStatus(DayOfWeek.MONDAY, LocalTime.of(9, 24, 30))
+        assertTrue(nearBell is PeriodStatus.Active)
+        assertEquals(30L, (nearBell as PeriodStatus.Active).secondsRemaining)
+        assertEquals(1L, nearBell.minutesRemaining)
+
+        // Mid-period seconds are kept, so a progress ring can advance smoothly.
+        val midPeriod = ScheduleEngine.getStatus(DayOfWeek.MONDAY, LocalTime.of(9, 0, 10))
+        assertTrue(midPeriod is PeriodStatus.Active)
+        assertEquals(1490L, (midPeriod as PeriodStatus.Active).secondsRemaining)
+        assertEquals(25L, midPeriod.minutesRemaining)
+    }
+
+    @Test
+    fun testNextStatusChangeLandsOnTheBell() {
+        val monday = LocalDate.of(2026, 8, 31)
+        assertEquals(DayOfWeek.MONDAY, monday.dayOfWeek)
+
+        // During Period 1 (8:30 - 9:25): the next change is the end of the period.
+        assertEquals(
+            LocalDateTime.of(monday, LocalTime.of(9, 25)),
+            ScheduleEngine.nextStatusChange(monday, LocalTime.of(9, 0))
+        )
+
+        // Passing (9:25 - 9:30): the next change is when Period 2 starts.
+        assertEquals(
+            LocalDateTime.of(monday, LocalTime.of(9, 30)),
+            ScheduleEngine.nextStatusChange(monday, LocalTime.of(9, 27))
+        )
+
+        // Before school: the first bell.
+        assertEquals(
+            LocalDateTime.of(monday, LocalTime.of(7, 30)),
+            ScheduleEngine.nextStatusChange(monday, LocalTime.of(6, 0))
+        )
+
+        // After dismissal: the first bell of the next school day.
+        assertEquals(
+            LocalDateTime.of(monday.plusDays(1), LocalTime.of(7, 30)),
+            ScheduleEngine.nextStatusChange(monday, LocalTime.of(16, 0))
+        )
+    }
+
+    @Test
+    fun testNextStatusChangeSkipsTheWeekend() {
+        val friday = LocalDate.of(2026, 9, 4)
+        assertEquals(DayOfWeek.FRIDAY, friday.dayOfWeek)
+
+        // Friday dismisses at 2:53 PM; the next bell is Monday's Period 0 at 7:30 AM.
+        assertEquals(
+            LocalDateTime.of(friday.plusDays(3), LocalTime.of(7, 30)),
+            ScheduleEngine.nextStatusChange(friday, LocalTime.of(15, 0))
+        )
+
+        val saturday = friday.plusDays(1)
+        assertEquals(
+            LocalDateTime.of(friday.plusDays(3), LocalTime.of(7, 30)),
+            ScheduleEngine.nextStatusChange(saturday, LocalTime.of(12, 0))
+        )
+    }
+
+    @Test
+    fun testStatusWindowsCoverTheCountdown() {
+        // The complication builds its live countdown from these two times.
+        val active = ScheduleEngine.getStatus(DayOfWeek.MONDAY, LocalTime.of(9, 0)) as PeriodStatus.Active
+        assertEquals(LocalTime.of(8, 30), active.windowStart)
+        assertEquals(LocalTime.of(9, 25), active.windowEnd)
+
+        val passing = ScheduleEngine.getStatus(DayOfWeek.MONDAY, LocalTime.of(9, 27)) as PeriodStatus.Passing
+        assertEquals(LocalTime.of(9, 25), passing.windowStart)
+        assertEquals(LocalTime.of(9, 30), passing.windowEnd)
+
+        val weekend = ScheduleEngine.getStatus(DayOfWeek.SATURDAY, LocalTime.of(12, 0))
+        assertEquals(null, weekend.windowEnd)
     }
 
     @Test

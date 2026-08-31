@@ -13,3 +13,4 @@ app/build/
 /captures
 .externalNativeBuild
 .cxx
+.kotlin/
