@@ -28,6 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
@@ -42,6 +45,7 @@ import androidx.wear.compose.material3.LinearProgressIndicator
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import com.shieldrj.schoolperiod.BuildConfig
 import com.shieldrj.schoolperiod.engine.ScheduleEngine
 import com.shieldrj.schoolperiod.model.BellPeriod
 import com.shieldrj.schoolperiod.model.PeriodStatus
@@ -71,12 +75,21 @@ fun SchoolPeriodApp() {
 
     // Live clock ticker, re-aligned to the top of each second so it cannot drift behind
     // the countdown the watch face is drawing.
-    LaunchedEffect(Unit) {
-        while (true) {
-            val now = LocalTime.now()
-            currentTime = now
-            currentDate = LocalDate.now()
-            delay(1000L - (now.nano / 1_000_000L))
+    //
+    // It ticks only while this screen is actually on screen. A LaunchedEffect is tied to the
+    // composition rather than to the lifecycle, so on its own the loop kept running once a
+    // second after the wrist was lowered, updating state nobody could see. Restarting on
+    // STARTED re-reads the clock immediately, so the first frame after a wrist raise is
+    // never stale.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val now = LocalTime.now()
+                currentTime = now
+                currentDate = LocalDate.now()
+                delay(1000L - (now.nano / 1_000_000L))
+            }
         }
     }
 
@@ -145,8 +158,17 @@ fun SchoolPeriodApp() {
                 )
             }
 
+            // Which build is on the watch, readable without a computer.
             item {
-                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "v${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 24.dp)
+                )
             }
         }
     }
