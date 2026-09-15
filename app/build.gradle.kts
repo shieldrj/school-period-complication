@@ -1,3 +1,7 @@
+// Must be a top-level import: inside the script, "java.util..." resolves against Gradle's own
+// `java` extension instead of the JDK package, and fails with "Unresolved reference: util".
+import java.util.concurrent.TimeUnit
+
 plugins {
     id("com.android.application")
     kotlin("android")
@@ -7,12 +11,27 @@ plugins {
 /**
  * Runs a git command and returns its trimmed output, or "" if git is missing, this is not a
  * checkout, or the command fails. Version numbers must never break a build.
+ *
+ * Deliberately NOT `providers.exec`. Gradle caches that provider's result and re-runs the
+ * command only when its declared inputs change - and the command line here never changes, so
+ * the value went stale and stuck. Observed on 2026-09-14: three commits and a clean tree later,
+ * builds were still stamping "1.9 (85d8fbf+dirty)", pinning APKs to a commit they were not
+ * built from and quietly defeating the whole point of deriving the version from git.
+ *
+ * A plain ProcessBuilder is re-run every configuration. That costs three git invocations per
+ * build and gives up configuration-cache compatibility, which this project does not use.
  */
 fun gitOutput(vararg args: String): String = runCatching {
-    providers.exec {
-        commandLine("git", *args)
-        isIgnoreExitValue = true
-    }.standardOutput.asText.get().trim()
+    val process = ProcessBuilder(listOf("git", *args))
+        .directory(rootDir)
+        .start()
+    // Read before waiting: a process that fills its output pipe blocks until someone drains it.
+    val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+    if (!process.waitFor(10, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        return@runCatching ""
+    }
+    if (process.exitValue() == 0) output else ""
 }.getOrDefault("")
 
 // The version is derived from git rather than hand-edited, so every merge ships a build that
