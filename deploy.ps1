@@ -93,9 +93,17 @@ function Find-WatchAddress {
     return $null
 }
 
-function Try-Connect($address) {
+function Connect-Watch($address) {
     if (-not $address) { return $null }
-    & adb connect $address 2>&1 | Out-Null
+    # A watch that dozed off leaves its transport behind as "offline", and adb will not replace
+    # an offline entry with a fresh connection to the same address. Clear it first - but only if
+    # it is actually listed. "adb disconnect" on an unknown address writes to stderr, and under
+    # $ErrorActionPreference = 'Stop' a redirected native stderr becomes a terminating
+    # NativeCommandError, which killed the whole deploy over a no-op.
+    if ((& adb devices) -match [regex]::Escape($address)) {
+        & adb disconnect $address | Out-Null
+    }
+    & adb connect $address | Out-Null
     Start-Sleep -Milliseconds 1200
     return Get-ConnectedWatchSerial
 }
@@ -112,14 +120,14 @@ if (-not $serial -and (Test-Path $AddressCachePath)) {
     # an address that looks perfectly correct on screen. Strip it explicitly.
     $cached = (Get-Content $AddressCachePath -Raw).Trim().TrimStart([char]0xFEFF)
     Write-Warn "Not advertising; trying the last address that worked ($cached)."
-    $serial = Try-Connect $cached
+    $serial = Connect-Watch $cached
 }
 
 if (-not $serial) {
     foreach ($attempt in 1..8) {
         $address = Find-WatchAddress
         if ($address) {
-            $serial = Try-Connect $address
+            $serial = Connect-Watch $address
             if ($serial) { break }
             Write-Warn "Attempt ${attempt}: $address did not accept the connection."
         } else {
