@@ -43,7 +43,12 @@ function Write-Warn($message) { Write-Host "    $message" -ForegroundColor Yello
 
 if (-not $SkipBuild) {
     $gradlew = Join-Path $PSScriptRoot 'gradlew.bat'
-    $tasks = if ($SkipTests) { @(':app:assembleDebug') } else { @(':app:testDebugUnitTest', ':app:assembleDebug') }
+    # Built by appending, not as "$tasks = if (...) { @('one') } else { @('a','b') }". PowerShell
+    # unwraps a single-element array returned from an if, so the -SkipTests branch became a bare
+    # string, and splatting a string passes its characters one at a time: gradle was handed ":".
+    $tasks = @()
+    if (-not $SkipTests) { $tasks += ':app:testDebugUnitTest' }
+    $tasks += ':app:assembleDebug'
 
     Write-Step "Building ($($tasks -join ', '))"
     & $gradlew @tasks --console=plain
@@ -103,7 +108,9 @@ $serial = Get-ConnectedWatchSerial
 # as a hint only, never as a stored truth: it is proved by connecting, and the device is still
 # made to identify itself afterwards.
 if (-not $serial -and (Test-Path $AddressCachePath)) {
-    $cached = (Get-Content $AddressCachePath -Raw).Trim()
+    # Trim() does not strip a byte-order mark, and a BOM in front of the IP makes adb fail with
+    # an address that looks perfectly correct on screen. Strip it explicitly.
+    $cached = (Get-Content $AddressCachePath -Raw).Trim().TrimStart([char]0xFEFF)
     Write-Warn "Not advertising; trying the last address that worked ($cached)."
     $serial = Try-Connect $cached
 }
@@ -134,7 +141,9 @@ if (-not $serial) {
 
 Write-Ok "Connected: $serial"
 if ($serial -match '^\d{1,3}(?:\.\d{1,3}){3}:\d+$') {
-    Set-Content -Path $AddressCachePath -Value $serial -Encoding utf8
+    # ascii, not utf8: Windows PowerShell 5.1 writes utf8 *with* a BOM, and an ip:port needs
+    # no more than ascii anyway.
+    Set-Content -Path $AddressCachePath -Value $serial -Encoding ascii
 }
 
 # --- 3. Refuse anything that is not a watch ---------------------------------------------------
