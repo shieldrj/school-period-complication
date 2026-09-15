@@ -89,6 +89,9 @@ internal object ComplicationRefreshScheduler {
 /**
  * Requests fresh complication data when a bell alarm fires, and re-arms the chain after the
  * events that invalidate it: a reboot (which clears alarms) or a clock/time-zone change.
+ *
+ * Declared `directBootAware` in the manifest so this runs at locked boot, before the watch is
+ * unlocked. It touches no app storage, only the compiled-in schedule and AlarmManager.
  */
 class ComplicationRefreshReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
