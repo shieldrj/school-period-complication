@@ -24,8 +24,15 @@
             </intent-filter>
         </activity>
 
+        <!--
+            directBootAware: until the watch is unlocked after a reboot the system will not
+            bind a component that is not marked here, so the watch face drew this slot empty
+            while every built-in complication was already filled. Safe because nothing on the
+            complication path reads app storage - the schedule is a compiled-in table.
+        -->
         <service
             android:name=".complication.PeriodComplicationService"
+            android:directBootAware="true"
             android:exported="true"
             android:icon="@drawable/ic_school"
             android:label="@string/complication_label"
@@ -50,11 +57,18 @@
 
         <receiver
             android:name=".complication.ComplicationRefreshReceiver"
+            android:directBootAware="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.shieldrj.schoolperiod.action.REFRESH_COMPLICATION" />
             </intent-filter>
             <intent-filter>
+                <!--
+                    LOCKED_BOOT_COMPLETED arrives before the unlock; BOOT_COMPLETED only after
+                    it. Both are listened for so the refresh chain re-arms at the earlier of
+                    the two, and the second is a harmless repeat of the same work.
+                -->
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />

@@ -67,4 +67,12 @@ missing schedule variants means adding to `ScheduleType`, which currently knows 
    `canScheduleExactAlarms()` is checked and an inexact alarm is used otherwise. It still lands
    close to the bell and the countdown keeps ticking regardless. Never assume the exact path.
 
-5. **`local.properties` stays out of git** — it is gitignored, and it holds the local SDK path.
+5. **The complication path must stay direct-boot-safe.** The service and its receiver are
+   `directBootAware`, because otherwise the system refuses to bind them until the watch is
+   unlocked and the slot draws empty after every reboot while the built-in complications are
+   already filled. That is only legal while nothing on that path reads app storage — the schedule
+   is a compiled-in table and there is no `SharedPreferences`, `DataStore` or database anywhere
+   in this app. If one is ever added, it must not be read from the complication or the receiver
+   unless it is moved to device-protected storage (`createDeviceProtectedStorageContext()`).
+
+6. **`local.properties` stays out of git** — it is gitignored, and it holds the local SDK path.
