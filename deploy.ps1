@@ -210,4 +210,4 @@ if ((Test-Path $builtManifest) -and $onWatch) {
 
 Write-Ok 'Asked the complication to refresh.'
 Write-Host ''
-Write-Host 'Done. The direct-boot fix only shows itself on the next reboot of the watch.' -ForegroundColor Green
+Write-Host 'Done.' -ForegroundColor Green

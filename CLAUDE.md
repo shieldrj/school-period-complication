@@ -96,11 +96,41 @@ missing schedule variants means adding to `ScheduleType`, which currently knows 
    close to the bell and the countdown keeps ticking regardless. Never assume the exact path.
 
 5. **The complication path must stay direct-boot-safe.** The service and its receiver are
-   `directBootAware`, because otherwise the system refuses to bind them until the watch is
-   unlocked and the slot draws empty after every reboot while the built-in complications are
-   already filled. That is only legal while nothing on that path reads app storage — the schedule
-   is a compiled-in table and there is no `SharedPreferences`, `DataStore` or database anywhere
-   in this app. If one is ever added, it must not be read from the complication or the receiver
-   unless it is moved to device-protected storage (`createDeviceProtectedStorageContext()`).
+   `directBootAware`, so they can run before the watch is unlocked. That is only legal while
+   nothing on that path reads app storage — the schedule is a compiled-in table and there is no
+   `SharedPreferences`, `DataStore` or database anywhere in this app. If one is ever added, it
+   must not be read from the complication or the receiver unless it is moved to device-protected
+   storage (`createDeviceProtectedStorageContext()`).
+
+   **This did not fix the blank slot at startup, and do not expect it to.** That was the reason
+   it was added, and the reason was wrong. See the next rule.
+
+6. **The slot is blank for ~14 seconds after a reboot, and almost none of that is ours.**
+   Measured from the watch's own boot log on 2026-09-14: the screen comes on at 21:20:52 with
+   the face visible and the slot empty; WearServices does not get round to asking us for data
+   until its `ComplicationRequesterJobService` fires at 21:21:00; we answer by 21:21:02; its
+   `ComplicationDataRateLimitedEvaluator` takes until 21:21:05.7 — slow because our data is
+   clock-driven rather than a snapshot — and it reaches the slot at 21:21:06.3.
+
+   Two beliefs to avoid re-deriving:
+
+   - **The lock screen has nothing to do with it.** This watch unlocks its credential storage
+     automatically at boot, with no PIN. Robert unlocked the keyguard at 21:21:21, a full 15
+     seconds *after* the data had already arrived. "It appears when I unlock" is a coincidence
+     of timing, not cause and effect.
+   - **"Everything else loads" is not a fair comparison.** Only this slot uses the third-party
+     complication path. The weather, heart rate and sunset readouts are drawn by Samsung's Ultra
+     Info Board face itself, in-process, and never wait on a provider.
+
+   Our own share of the delay is about 2.4 seconds. Nudging the platform earlier does not work:
+   the `requestUpdateAll()` sent from `LOCKED_BOOT_COMPLETED` at 21:20:53.9 was dropped, because
+   WearServices' own receiver is not direct-boot aware and the user was still locked.
+
+   To re-measure, reboot and then read the ring buffer, which keeps the whole boot:
+   `adb -s <watch> logcat -d -b all`, and grep `processComplicationData`,
+   `RateLimitedEvaluator`, `ComplicationDataSendingController`, `screen_toggled` and
+   `WearableKeyguard.*WINDOW_UNLOCKED`. Field contents are `REDACTED`; timings are not.
+
+7. **`local.properties` stays out of git** — it is gitignored, and it holds the local SDK path.
 
 6. **`local.properties` stays out of git** — it is gitignored, and it holds the local SDK path.
