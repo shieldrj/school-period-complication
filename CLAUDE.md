@@ -7,9 +7,37 @@ period (`P1`, `Ntr`, `Lunch`) and a live countdown to the next bell.
 
 - **Run the tests**: `.\gradlew.bat :app:testDebugUnitTest` (verified passing)
 - **Build debug APK**: `.\gradlew.bat assembleDebug`
-- **Install to the watch**: `adb install -r app\build\outputs\apk\debug\app-debug.apk`
-  — always pass `-s <serial>`; see the sibling watch-face repo for finding the watch, which
-  has no stable IP or port.
+- **Build, test and install to the watch**: `.\deploy.ps1`
+
+## ALWAYS DEPLOY TO THE WATCH AFTER CHANGING THE APP
+
+Robert cannot see a change until it is on his wrist. So whenever code, resources or the
+manifest here change, run `.\deploy.ps1` — it runs the tests, builds, installs, and reports the
+version it read back *off the watch* rather than the version it thinks it built. Do this as
+part of the normal shipping workflow, without asking. Then say plainly whether it reached the
+watch, because sometimes it cannot:
+
+- **The watch is unreachable.** The script says so and exits without installing. Report that;
+  never describe the change as being on the watch.
+- **The tests fail.** The script refuses to install, which is the point. Fix the tests.
+
+Never install by hand with a remembered `adb connect <ip>:<port>`. **Every network detail about
+this watch changes** — its IP, its randomized Wi-Fi MAC (a different one per radio band), and
+its wireless-debugging port, which is reassigned whenever adbd restarts, including on any
+Wi-Fi reconnect. The hardware serial `RFAX60DJKDZ` is the only stable identifier, which is why
+`deploy.ps1` rediscovers the watch by mDNS on every run.
+
+**`deploy.ps1` refuses to install on a device that is not a watch, and that check must stay.**
+Robert's phone is usually connected to adb at the same time. The sibling watch-face repo's
+auto-install rule only checked that *a* device was connected, and so pushed build after build
+to the phone, where a watch face does nothing.
+
+**If the watch stops accepting the connection, the pairing was cleared** — toggling wireless
+debugging on the watch forgets this laptop. An open TCP port with a failed handshake is the
+signature, and it is not the same as a refused port, which just means a stale mDNS record.
+Only Robert can fix a lost pairing: he taps *Settings → Developer options → Wireless debugging
+→ Pair new device* and reads out the 6-digit code, which exists nowhere but the watch screen.
+Then `adb pair <ip>:<port> <code>`.
 
 `ScheduleEngineTest.kt` (286 lines) covers the engine and passes. **Nothing runs it
 automatically** — this repo has no CI, so those tests only run when someone remembers.
